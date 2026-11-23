@@ -63,9 +63,9 @@ export function PaperDetailPage({ paper, onBack }) {
         <span className="eyebrow-mono text-accent-breeze block mb-2">
           // PLAIN-ENGLISH BREAKDOWN
         </span>
-        <p className="text-sm text-ink leading-relaxed font-normal">
+        <div className="text-sm text-ink leading-relaxed font-normal whitespace-pre-line">
           {analysis.beginner_explanation || 'Detailed plain-English analysis is being synthesized for this document.'}
-        </p>
+        </div>
       </div>
 
       {/* Structured Sections */}

@@ -25,6 +25,49 @@ export function App() {
     loadCollections();
   }, []);
 
+  // Auto-poll collection overview whenever papers are processing (extracting, analysing, queued, validating)
+  useEffect(() => {
+    if (!currentCollection || !overview?.papers) return;
+
+    const hasProcessing = overview.papers.some(p =>
+      ['queued', 'validating', 'extracting', 'analysing'].includes(p.status)
+    );
+
+    if (!hasProcessing) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const freshOverview = await api.getCollectionOverview(currentCollection.id);
+        if (freshOverview) {
+          setOverview(freshOverview);
+        }
+      } catch (err) {
+        console.error('Polling collection overview error:', err);
+      }
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [currentCollection, overview]);
+
+  // Auto-poll selected paper on detail page if it is still processing
+  useEffect(() => {
+    if (!selectedPaper || activeTab !== 'paper_detail') return;
+    if (!['queued', 'validating', 'extracting', 'analysing'].includes(selectedPaper.status)) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const freshPaper = await api.getPaper(selectedPaper.id);
+        if (freshPaper) {
+          setSelectedPaper(freshPaper);
+        }
+      } catch (err) {
+        console.error('Polling paper detail error:', err);
+      }
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [selectedPaper, activeTab]);
+
   const loadCollections = async () => {
     try {
       const list = await api.listCollections();
@@ -71,11 +114,16 @@ export function App() {
     }
   };
 
-  const handleUpload = async (file) => {
+  const handleUpload = async (files) => {
     if (!currentCollection) return;
+    const fileList = Array.isArray(files) ? files : [files];
+    if (fileList.length === 0) return;
+
     setIsUploading(true);
     try {
-      await api.uploadPaper(currentCollection.id, file);
+      for (const file of fileList) {
+        await api.uploadPaper(currentCollection.id, file);
+      }
       // Refresh overview
       const ov = await api.getCollectionOverview(currentCollection.id);
       setOverview(ov);

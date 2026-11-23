@@ -10,24 +10,48 @@ export function FileUploader({ onUpload, currentPaperCount = 0, maxPapers = 5, i
     setErrorMsg('');
     if (!files || files.length === 0) return;
 
-    if (currentPaperCount >= maxPapers) {
+    const availableSlots = maxPapers - currentPaperCount;
+    if (availableSlots <= 0) {
       setErrorMsg(`Collection limit reached. Maximum ${maxPapers} papers allowed.`);
       return;
     }
 
-    const file = files[0];
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      setErrorMsg('Invalid file format. Upload text-based PDF documents only.');
+    const fileList = Array.from(files);
+    const validFiles = [];
+    const errors = [];
+
+    for (const file of fileList) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        errors.push(`"${file.name}" is not a PDF file.`);
+        continue;
+      }
+
+      const sizeMb = file.size / (1024 * 1024);
+      if (sizeMb > 10) {
+        errors.push(`"${file.name}" exceeds 10 MB limit (${sizeMb.toFixed(1)} MB).`);
+        continue;
+      }
+
+      validFiles.push(file);
+    }
+
+    if (validFiles.length === 0) {
+      if (errors.length > 0) setErrorMsg(errors.join(' '));
       return;
     }
 
-    const sizeMb = file.size / (1024 * 1024);
-    if (sizeMb > 10) {
-      setErrorMsg(`PDF exceeds limit (${sizeMb.toFixed(1)} MB / 10 MB limit).`);
-      return;
+    const toUpload = validFiles.slice(0, availableSlots);
+    if (validFiles.length > availableSlots) {
+      setErrorMsg(`Only ${availableSlots} more paper slot(s) available. Uploading first ${availableSlots}.`);
+    } else if (errors.length > 0) {
+      setErrorMsg(errors.join(' '));
     }
 
-    onUpload(file);
+    onUpload(toUpload);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const onDragOver = (e) => {
@@ -60,6 +84,7 @@ export function FileUploader({ onUpload, currentPaperCount = 0, maxPapers = 5, i
       >
         <input
           type="file"
+          multiple
           ref={fileInputRef}
           onChange={(e) => handleFiles(e.target.files)}
           accept=".pdf,application/pdf"
@@ -76,7 +101,7 @@ export function FileUploader({ onUpload, currentPaperCount = 0, maxPapers = 5, i
         </span>
 
         <h3 className="text-base font-normal tracking-[-0.4px] text-ink">
-          {isUploading ? 'Extracting & Parsing PDF Document...' : 'Drop Research Paper PDF Here'}
+          {isUploading ? 'Uploading & Parsing PDF Document(s)...' : 'Drop Research Paper PDFs Here (Select Multiple)'}
         </h3>
         
         <p className="text-[11px] font-mono uppercase tracking-caption-mono-sm text-mute mt-2">
@@ -90,7 +115,7 @@ export function FileUploader({ onUpload, currentPaperCount = 0, maxPapers = 5, i
             className="btn-outline-sm"
           >
             <FileUp className="w-3.5 h-3.5" />
-            <span className="font-mono uppercase tracking-caption-mono-sm text-[11px]">Select Document</span>
+            <span className="font-mono uppercase tracking-caption-mono-sm text-[11px]">Select Document(s)</span>
           </button>
         </div>
       </div>

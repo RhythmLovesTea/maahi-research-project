@@ -8,7 +8,9 @@ from app.services.pdf_service import PDFService
 from app.services.ai.heuristic_provider import HeuristicProvider
 from app.services.relationship_service import RelationshipService
 from app.models import Paper, Theme, PaperAnalysis
+from app.core.database import Base, engine
 
+Base.metadata.create_all(bind=engine)
 client = TestClient(app)
 
 def test_health_check():

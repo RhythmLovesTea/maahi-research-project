@@ -28,14 +28,15 @@ class PaperResponse(BaseModel):
     abstract: Optional[str] = None
     status: str
     error_code: Optional[str] = None
+    analysis: Optional[PaperAnalysisSchema] = None
+    page_count: int = 0
     created_at: datetime
 
     class Config:
         from_attributes = True
 
 class PaperDetailResponse(PaperResponse):
-    analysis: Optional[PaperAnalysisSchema] = None
-    page_count: int = 0
+    pass
 
 class PaperCompareRequest(BaseModel):
     paper_ids: List[str] = Field(..., min_length=2, max_length=5)

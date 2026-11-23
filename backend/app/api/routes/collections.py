@@ -13,6 +13,7 @@ from app.schemas.collection import (
 )
 from app.schemas.paper import (
     PaperResponse,
+    PaperAnalysisSchema,
     PaperCompareRequest,
     PaperCompareResponse,
     PaperCompareItem,
@@ -99,9 +100,7 @@ def get_collection_overview(collection_id: str, db: Session = Depends(get_db)):
 
     themes = []
     for t in col.themes:
-        p_ids = [pt.paper_id for pt in db.query(t.papers).all()] if hasattr(t, "papers") else []
-        if not p_ids:
-            p_ids = [p.id for p in papers]
+        p_ids = [p.id for p in t.papers] if t.papers else [p.id for p in papers]
         themes.append(ThemeResponse(
             id=t.id,
             name=t.name,
@@ -130,8 +129,21 @@ def get_collection_overview(collection_id: str, db: Session = Depends(get_db)):
             evidences=evs
         ))
 
-    papers_response = [
-        PaperResponse(
+    papers_response = []
+    for p in papers:
+        an_schema = None
+        if p.analysis:
+            an_schema = PaperAnalysisSchema(
+                research_problem=p.analysis.research_problem,
+                objective=p.analysis.objective,
+                methodology=p.analysis.methodology,
+                dataset=p.analysis.dataset,
+                main_findings=p.analysis.main_findings_json or [],
+                limitations=p.analysis.limitations_json or [],
+                future_work=p.analysis.future_work_json or [],
+                beginner_explanation=p.analysis.beginner_explanation
+            )
+        papers_response.append(PaperResponse(
             id=p.id,
             collection_id=p.collection_id,
             filename=p.filename,
@@ -141,10 +153,10 @@ def get_collection_overview(collection_id: str, db: Session = Depends(get_db)):
             abstract=p.abstract,
             status=p.status,
             error_code=p.error_code,
+            analysis=an_schema,
+            page_count=len(p.pages) if p.pages else 0,
             created_at=p.created_at
-        )
-        for p in papers
-    ]
+        ))
 
     summary = (
         f"This collection contains {len(papers)} research papers. "
