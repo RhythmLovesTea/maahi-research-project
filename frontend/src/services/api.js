@@ -1,4 +1,9 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+let rawBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').trim();
+rawBase = rawBase.replace(/\/+$/, '');
+if (rawBase.startsWith('http') && !rawBase.includes('/api/v1')) {
+  rawBase += '/api/v1';
+}
+const API_BASE = rawBase;
 
 // Sample demonstration dataset when backend is running offline
 const DEMO_COLLECTIONS = [
@@ -236,6 +241,14 @@ export const api = {
       return data.data;
     } catch (err) {
       if (err.code) throw err;
+      console.error('Failed to connect to backend during upload:', err);
+      if (API_BASE.startsWith('http')) {
+        throw {
+          status: 0,
+          code: 'NETWORK_ERROR',
+          message: `Could not reach backend API at ${API_BASE}. If using Render free tier, the server may take ~45s to wake up from idle. Please check Render logs or wait a moment and try again.`
+        };
+      }
 
       // Offline demo fallback
       const newPaper = {
