@@ -63,8 +63,9 @@ Return JSON with this exact schema:
             data = json.loads(cleaned)
             return data
         except Exception as e:
-            logger.error(f"Gemini analysis error: {e}")
-            raise e
+            logger.warning(f"Gemini analysis error: {e}. Falling back to HeuristicProvider.")
+            from app.services.ai.heuristic_provider import HeuristicProvider
+            return HeuristicProvider().analyze_paper(paper_text, filename)
 
     def answer_question(self, question: str, evidence_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
         if not self.model:

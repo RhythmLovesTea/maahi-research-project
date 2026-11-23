@@ -16,7 +16,7 @@ class GroqProvider(BaseAIProvider):
         model_name: str = "llama-3.3-70b-versatile",
         base_url: str = "https://api.groq.com/openai/v1"
     ):
-        self.api_key = api_key.strip()
+        self.api_key = (api_key or "").strip().strip("'\"")
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
 
@@ -33,7 +33,7 @@ class GroqProvider(BaseAIProvider):
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
 
-        with httpx.Client(timeout=45.0) as client:
+        with httpx.Client(timeout=40.0) as client:
             response = client.post(
                 f"{self.base_url}/chat/completions",
                 headers=headers,
@@ -57,6 +57,7 @@ class GroqProvider(BaseAIProvider):
             "4. Respond with a valid JSON object matching the requested schema."
         )
 
+        # Truncate to ~14,000 characters (~3,500 tokens) to stay safely within Groq Free Tier TPM limits
         user_prompt = f"""
 Analyze this research paper ({filename}) and return a valid JSON object with this exact structure:
 {{
@@ -75,7 +76,7 @@ Analyze this research paper ({filename}) and return a valid JSON object with thi
 }}
 
 --- PAPER TEXT (TRUNCATED) ---
-{paper_text[:30000]}
+{paper_text[:14000]}
 """
         messages = [
             {"role": "system", "content": system_instruction},
@@ -84,13 +85,13 @@ Analyze this research paper ({filename}) and return a valid JSON object with thi
 
         try:
             content = self._call_chat_completion(messages, temperature=0.1, json_mode=True)
-            # Clean markdown code blocks if wrapped
             cleaned = re.sub(r"^```(?:json)?\s*", "", content.strip(), flags=re.MULTILINE)
             cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
             return json.loads(cleaned)
         except Exception as e:
-            logger.error(f"Groq paper analysis failed: {e}")
-            raise e
+            logger.warning(f"Groq paper analysis failed: {e}. Falling back to HeuristicProvider.")
+            from app.services.ai.heuristic_provider import HeuristicProvider
+            return HeuristicProvider().analyze_paper(paper_text, filename)
 
     def answer_question(self, question: str, evidence_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
         if not evidence_chunks:
@@ -109,38 +110,32 @@ Analyze this research paper ({filename}) and return a valid JSON object with thi
             )
 
         system_instruction = (
-            "You are SearchMate, an AI research assistant for students.\n"
-            "Answer the user's question using ONLY the provided research evidence chunks below.\n"
+            "You are SearchMate, an evidence-grounded research assistant. "
+            "Answer the user's research question strictly and solely based on the provided evidence chunks from their uploaded papers.\n"
             "RULES:\n"
-            "1. Ground every factual claim strictly in the evidence chunks.\n"
-            "2. If the answer cannot be established, state: 'I could not find enough information in your uploaded papers to answer this.'\n"
-            "3. Cite the chunk indices you used in 'cited_chunk_indices'.\n"
-            "4. Return a valid JSON object."
+            "1. Ground your statements directly in the provided evidence.\n"
+            "2. Explicitly cite which evidence chunk (#0, #1, etc.) you used.\n"
+            "3. If the answer cannot be determined from the chunks, state clearly: 'I could not find enough information in your uploaded papers to answer this.'\n"
+            "4. Return a JSON object with keys 'answer' (string) and 'cited_chunk_indices' (array of integer indices used)."
         )
 
-        user_prompt = f"""
-User Question: {question}
-
-Available Evidence:
-{evidence_str}
-
-Return JSON formatted as:
-{{
-  "answer": "Plain-language answer with cited chunk references",
-  "cited_chunk_indices": [0, 1],
-  "grounded": true
-}}
-"""
+        user_prompt = f"QUESTION: {question}\n\nEVIDENCE:\n{evidence_str}"
         messages = [
             {"role": "system", "content": system_instruction},
             {"role": "user", "content": user_prompt}
         ]
 
         try:
-            content = self._call_chat_completion(messages, temperature=0.1, json_mode=True)
+            content = self._call_chat_completion(messages, temperature=0.2, json_mode=True)
             cleaned = re.sub(r"^```(?:json)?\s*", "", content.strip(), flags=re.MULTILINE)
             cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
-            return json.loads(cleaned)
+            parsed = json.loads(cleaned)
+            return {
+                "answer": parsed.get("answer", "No response generated."),
+                "cited_chunk_indices": parsed.get("cited_chunk_indices", []),
+                "grounded": len(parsed.get("cited_chunk_indices", [])) > 0
+            }
         except Exception as e:
-            logger.error(f"Groq question answering failed: {e}")
-            raise e
+            logger.warning(f"Groq question answering failed: {e}. Falling back to HeuristicProvider.")
+            from app.services.ai.heuristic_provider import HeuristicProvider
+            return HeuristicProvider().answer_question(question, evidence_chunks)

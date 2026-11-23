@@ -56,7 +56,12 @@ def process_paper_task(paper_id: str, collection_id: str, file_path: str):
         paper = paper_repo.get_by_id(paper_id)
         filename = paper.filename if paper else "document.pdf"
         
-        analysis_data = ai_provider.analyze_paper(full_text, filename)
+        try:
+            analysis_data = ai_provider.analyze_paper(full_text, filename)
+        except Exception as ai_err:
+            logger.warning(f"AI Provider failed for {paper_id}: {ai_err}. Falling back to HeuristicProvider.")
+            from app.services.ai.heuristic_provider import HeuristicProvider
+            analysis_data = HeuristicProvider().analyze_paper(full_text, filename)
         
         # Update paper metadata
         paper_repo.update_metadata(
@@ -85,15 +90,18 @@ def process_paper_task(paper_id: str, collection_id: str, file_path: str):
         paper_repo.update_status(paper_id, "completed")
 
         # Step 4: Refresh collection cross-paper themes and insights
-        all_papers = paper_repo.get_by_collection(collection_id)
-        completed_papers = [p for p in all_papers if p.status == "completed"]
-        
-        if completed_papers:
-            themes = RelationshipService.extract_collection_themes(completed_papers)
-            analysis_repo.replace_collection_themes(collection_id, themes)
+        try:
+            all_papers = paper_repo.get_by_collection(collection_id)
+            completed_papers = [p for p in all_papers if p.status == "completed"]
+            
+            if completed_papers:
+                themes = RelationshipService.extract_collection_themes(completed_papers)
+                analysis_repo.replace_collection_themes(collection_id, themes)
 
-            insights = ResearchIdeaService.generate_insights_and_gaps(completed_papers)
-            analysis_repo.replace_collection_insights(collection_id, insights)
+                insights = ResearchIdeaService.generate_insights_and_gaps(completed_papers)
+                analysis_repo.replace_collection_insights(collection_id, insights)
+        except Exception as theme_err:
+            logger.warning(f"Theme/Insight refresh failed for collection {collection_id}: {theme_err}")
 
     except Exception as e:
         logger.error(f"Error processing paper {paper_id}: {e}")
